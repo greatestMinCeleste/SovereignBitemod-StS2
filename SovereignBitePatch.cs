@@ -539,4 +539,22 @@ namespace SovereignBitemod.SovereignBitemodCode
             }
         }
     }
+
+    // 升级后的蛇咬变成1费但是不会再提升数值
+    [HarmonyPatch(typeof(Snakebite), "OnUpgrade")]
+    public static class Patch_Snakebite_OnUpgrade
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Snakebite __instance)
+        {
+            // 拦截蛇咬原版的升级逻辑
+            // 不执行任何原版代码
+
+            // 注入费用减1
+            __instance.EnergyCost.UpgradeBy(-1);
+
+            // 返回false屏蔽游戏原有逻辑
+            return false;
+        }
+    }
 }
