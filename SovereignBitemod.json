@@ -1,0 +1,11 @@
+{
+  "id": "SovereignBitemod",
+  "name": "SovereignBitemod",
+  "author": "YYreWinder咬紧风纹理",
+  "description": "假如储君锻造的牌是蛇咬--锻造蛇咬mod, 使用了 GitHub/Alchyr 提供的开源.csproj编译模板",
+  "version": "1.0.0",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": true
+}

@@ -1,0 +1,8 @@
+
+bin/
+obj/
+
+.godot/
+
+sts2.dll
+0Harmony.dll
