@@ -58,10 +58,6 @@
             <HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath>
             <Private>false</Private>
         </Reference>
-        <Reference Include="sts2">
-            <HintPath>$(Sts2DataDir)/sts2.dll</HintPath>
-            <Private>false</Private>
-        </Reference>
     </ItemGroup>
     
     <ItemGroup Condition="True">
@@ -98,6 +94,12 @@
 
     <ItemGroup>
         <Folder Include="Localizations\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="sts2">
+        <HintPath>sts2.dll</HintPath>
+      </Reference>
     </ItemGroup>
     
     <Target Name="CheckDependencyPaths">

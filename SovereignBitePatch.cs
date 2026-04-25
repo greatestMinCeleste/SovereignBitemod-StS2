@@ -13,13 +13,16 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization.DynamicVars;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Cards;
+using MegaCrit.Sts2.Core.Models.Enchantments;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.ValueProps;
 using System.Reflection;
+using static Godot.Performance;
 
 
 namespace SovereignBitemod.SovereignBitemodCode
@@ -56,7 +59,7 @@ namespace SovereignBitemod.SovereignBitemodCode
             if (allSnakebites.Count == 0)
             {
                 Snakebite newSnakebite = player.Creature.CombatState.CreateCard<Snakebite>(player);
-                await CardPileCmd.AddGeneratedCardToCombat(newSnakebite, PileType.Hand, addedByPlayer: true);
+                await CardPileCmd.AddGeneratedCardToCombat(newSnakebite, PileType.Hand, creator: player);
                 allSnakebites.Add(newSnakebite);
                 activeSnake = newSnakebite;
             }
@@ -181,28 +184,29 @@ namespace SovereignBitemod.SovereignBitemodCode
                         foreach (var monster in hittableEnemies)
                         {
                             VfxCmd.PlayOnCreatureCenter(monster, "vfx/vfx_bite");
-                            await PowerCmd.Apply<PoisonPower>(monster, instance.DynamicVars.Poison.BaseValue, instance.Owner.Creature, instance);
+                            await PowerCmd.Apply<PoisonPower>(choiceContext, monster, instance.DynamicVars.Poison.BaseValue, instance.Owner.Creature, instance);
                         }
                     }
                 }
                 else
                 {
-                    // 单体：咬选定目标
                     if (cardPlay.Target != null)
                     {
                         VfxCmd.PlayOnCreatureCenter(cardPlay.Target, "vfx/vfx_bite");
-                        await PowerCmd.Apply<PoisonPower>(cardPlay.Target, instance.DynamicVars.Poison.BaseValue, instance.Owner.Creature, instance);
+                        await PowerCmd.Apply<PoisonPower>(choiceContext, cardPlay.Target, instance.DynamicVars.Poison.BaseValue, instance.Owner.Creature, instance);
                     }
                 }
             }
 
             // 招架: 每当你打出蛇咬时, 获得10点格挡
-            var parryPower = instance.Owner.Creature.GetPower<ParryPower>();
-            if (parryPower != null)
+            decimal parryAmount = instance.Owner.Creature.GetPowerAmount<ParryPower>();
+            if (parryAmount > 0m)
             {
-                parryPower.Flash(); // 能力图标闪烁
-                // 直接调用原版, 传入 instance.Owner.Creature 和空列表
-                await parryPower.AfterSovereignBladePlayed(instance.Owner.Creature, Array.Empty<DamageResult>());
+                // 闪烁能力图标
+                instance.Owner.Creature.GetPower<ParryPower>()?.Flash();
+
+                // 计算最终格挡, 会自动计算敏捷, 脆弱
+                await CreatureCmd.GainBlock(instance.Owner.Creature, parryAmount, ValueProp.Move, cardPlay);
             }
 
             // 触发蛇咬大剑 (和君王之剑一样)
@@ -401,29 +405,32 @@ namespace SovereignBitemod.SovereignBitemodCode
                 for (int i = 0; i < instance.DynamicVars.Repeat.IntValue; i++)
                 {
                     CardModel card = selection.CreateClone();
-                    await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, addedByPlayer: true);
+                    await CardPileCmd.AddGeneratedCardToCombat(card, PileType.Hand, creator: instance.Owner);
                 }
             }
         }
     }
 
     // 君王矿石: 每当你生成一张无色牌或蛇咬时, 获得2点格挡
-    [HarmonyPatch(typeof(Regalite), "AfterCardEnteredCombat")]
+    [HarmonyPatch(typeof(Regalite), "AfterCardGeneratedForCombat")]
     public static class Patch_Regalite_IncludeSnakebite
     {
         [HarmonyPrefix]
-        public static bool Prefix(Regalite __instance, CardModel card, ref Task __result)
+        public static bool Prefix(Regalite __instance, CardModel card, Player? creator, ref Task __result)
         {
-            __result = ExecuteRegaliteAsync(__instance, card);
-            return false;
+            // 拦截逻辑：如果是无色牌（官方原版逻辑）或者是我们的蛇咬
+            if (creator != null && creator == __instance.Owner && (card.VisualCardPool.IsColorless || card is Snakebite))
+            {
+                __result = ExecuteRegaliteAsync(__instance, card);
+                return false; // 完全接管，不执行原版，防止双倍格挡
+            }
+            return true; // 其他情况（虽然基本没其他情况）交给原版
         }
 
         private static async Task ExecuteRegaliteAsync(Regalite instance, CardModel card)
         {
-            if (card.Owner == instance.Owner && (card.VisualCardPool.IsColorless || card is Snakebite))
-            {
-                await CreatureCmd.GainBlock(instance.Owner.Creature, instance.DynamicVars.Block, null, fast: true);
-            }
+            instance.Flash();
+            await CreatureCmd.GainBlock(instance.Owner.Creature, instance.DynamicVars.Block, null, fast: true);
         }
     }
 
@@ -449,7 +456,7 @@ namespace SovereignBitemod.SovereignBitemodCode
     public static class Patch_CardGenerated_AttachBlade
     {
         [HarmonyPostfix]
-        public static void Postfix(CardModel card, PileType newPileType, bool addedByPlayer, CardPilePosition position)
+        public static void Postfix(CardModel card, PileType newPileType, Player? creator, CardPilePosition position)
         {
             // 如果新生成的卡牌是蛇咬
             if (card is Snakebite)
